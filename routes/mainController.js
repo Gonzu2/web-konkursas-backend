@@ -69,34 +69,43 @@ router.post("/new", async (req, res) => {
 router.get("/chat/:chat_id", async (req, res) => {
     const chat_id = req.params.chat_id;
 
-    let messages = await Chats.findById(chat_id)
+    let chat = await Chats.findById(chat_id);
 
-    messages.chatsHistory.forEach(async (message, index) => {
-        if (message.sentByAi === true && message.messageContent === "Generating response") {
-            console.log("Trying to see if the ai has generated a response")
-            let responseData
-            await axios.get(
-                `http://172.16.50.58:5000/api/text/status/${message.jobId}`,
-                config
-            ).then(response => {
-                responseData = response.data
-            })
-
-            if (responseData.job_running === false) {
-                console.log(messages.chatsHistory[index].messageContent)
-                messages.chatsHistory[index].messageContent = responseData.job_result
-                console.log(messages.chatsHistory[index].messageContent)
-
-            }
+    chat.chatsHistory.find(async (chatHistory) => {
+        if (chatHistory.sentByAi === true) {
+            chatHistory.messageContent = await getResponseFromAi(chatHistory.jobId)
+            console.log(chatHistory)
         }
     })
 
-    console.log("\n\n\n" + messages)
+    async function getResponseFromAi(job_id) {
+        let job_result;
+        await axios.get(
+            `http://172.16.50.58:5000/api/text/status/${job_id}`,
+            config
+        ).then(response => {
+            job_result = response.data.job_result
+        })
 
-    res.status(200).json({ messages: messages })
+        return job_result
+    }
+
+    await chat.save()
+    res.status(200).json({ message: chat })
+
 })
 
+router.delete("/chat/:chat_id/delete", async (req, res) => {
+    const chat_id = req.params.chat_id;
+    try {
+        await Chats.deleteOne({ _id: chat_id })
+    } catch (err) {
+        console.log(err)
+        return res.status(501).json({ message: "Internal error" })
+    }
 
+    return res.status(200).json({ message: "Successfully deleted chat" })
+})
 
 
 
